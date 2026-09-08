@@ -100,7 +100,7 @@
       },
       "key": {
         "title": "Remote key",
-        "description": "HomeKit key '{key}' currently sends '{current}' (default '{default}'). Enter the Android keycode to send instead, or clear the field to go back to the default.",
+        "description": "The HomeKit key {key} currently sends {current} (default: {default}). Enter the Android keycode to send instead, or clear the field to restore the default.",
         "data": {
           "keycode": "Android keycode"
         },
@@ -147,7 +147,7 @@
   },
   "exceptions": {
     "unknown_source": {
-      "message": "'{source}' is not a configured input. Configured inputs: {sources}."
+      "message": "{source} is not a configured input. Configured inputs: {sources}."
     }
   }
 }

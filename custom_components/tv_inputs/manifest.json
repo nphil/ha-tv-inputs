@@ -1,14 +1,20 @@
 {
   "domain": "tv_inputs",
   "name": "TV Inputs",
-  "version": "1.0.0",
-  "codeowners": ["@nphil"],
+  "after_dependencies": [
+    "androidtv_remote"
+  ],
+  "codeowners": [
+    "@nphil"
+  ],
   "config_flow": true,
-  "dependencies": ["media_player"],
-  "after_dependencies": ["androidtv_remote"],
+  "dependencies": [
+    "media_player"
+  ],
   "documentation": "https://github.com/nphil/ha-tv-inputs",
   "integration_type": "helper",
   "iot_class": "calculated",
   "issue_tracker": "https://github.com/nphil/ha-tv-inputs/issues",
-  "requirements": []
+  "requirements": [],
+  "version": "1.0.0"
 }
