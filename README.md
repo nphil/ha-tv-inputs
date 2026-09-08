@@ -6,7 +6,7 @@ Gives any Home Assistant media player a real **input list** and a working
 **remote**, so an Android TV box, projector or streaming stick shows up in Apple
 Home the way an Apple TV does — app tiles you can pick, and a D‑pad that moves.
 
-[![hacs][hacs-badge]][hacs] [![release][release-badge]][releases]
+[![hacs][hacs-badge]][hacs] [![release][release-badge]][releases] [![validate][validate-badge]][validate]
 
 ## Why this exists
 
@@ -144,3 +144,5 @@ MIT © nphil
 [hacs-badge]: https://img.shields.io/badge/HACS-custom-41BDF5.svg
 [release-badge]: https://img.shields.io/github/v/release/nphil/ha-tv-inputs
 [releases]: https://github.com/nphil/ha-tv-inputs/releases
+[validate]: https://github.com/nphil/ha-tv-inputs/actions/workflows/validate.yml
+[validate-badge]: https://github.com/nphil/ha-tv-inputs/actions/workflows/validate.yml/badge.svg
