@@ -53,6 +53,8 @@ the UI.
 2. Install **TV Inputs**, restart Home Assistant.
 3. Settings → Devices & services → **Add integration** → *TV Inputs*.
 
+The entry lives on the **Integrations** tab (it registers a device), not under Helpers.
+
 ### Manual
 
 Copy `custom_components/tv_inputs/` into your `config/custom_components/`,

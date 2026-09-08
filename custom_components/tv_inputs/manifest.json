@@ -12,9 +12,9 @@
     "media_player"
   ],
   "documentation": "https://github.com/nphil/ha-tv-inputs",
-  "integration_type": "helper",
+  "integration_type": "device",
   "iot_class": "calculated",
   "issue_tracker": "https://github.com/nphil/ha-tv-inputs/issues",
   "requirements": [],
-  "version": "1.0.0"
+  "version": "1.0.1"
 }
