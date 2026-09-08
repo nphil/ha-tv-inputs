@@ -1,0 +1,153 @@
+{
+  "title": "TV Inputs",
+  "config": {
+    "abort": {
+      "already_configured": "That media player already has a TV Inputs wrapper."
+    },
+    "error": {
+      "blank_name": "Give the wrapper a name.",
+      "blank_label": "Give the input a label.",
+      "blank_target": "Enter the deep link or package id to launch.",
+      "invalid_launch_type": "Choose how the input is launched.",
+      "duplicate_label": "Another input already uses this label; HomeKit needs each one to be unique."
+    },
+    "step": {
+      "user": {
+        "title": "Wrap a media player for HomeKit",
+        "description": "Creates one media player that mirrors an existing one and adds a HomeKit input list. Expose the new entity to HomeKit as a Television accessory instead of the original.",
+        "data": {
+          "name": "Name",
+          "source_entity": "Media player to wrap",
+          "remote_entity": "Remote for navigation keys",
+          "device_class": "Shown in HomeKit as"
+        },
+        "data_description": {
+          "name": "Name of the new entity and its device, for example 'Master Bedroom Projector'.",
+          "source_entity": "The player that actually launches apps; for an Android TV box this is the Android TV Remote media player.",
+          "remote_entity": "Optional. HomeKit's D-pad, back, home and transport keys are sent here as Android keycodes.",
+          "device_class": "Television or receiver; it only changes the icon and how HomeKit labels the accessory."
+        }
+      },
+      "inputs": {
+        "title": "Inputs",
+        "description": "{count} input(s) so far: {labels}. Add the apps HomeKit should list, or finish now and add them later from the entry's options.",
+        "menu_options": {
+          "input": "Add an input",
+          "finish": "Finish"
+        }
+      },
+      "input": {
+        "title": "Add an input",
+        "description": "One app as HomeKit will list it.",
+        "data": {
+          "label": "Label",
+          "launch_type": "Launch with",
+          "launch_target": "Deep link or package id",
+          "app_id": "App id reported by the player"
+        },
+        "data_description": {
+          "label": "What HomeKit shows for this input and what the wrapper reports as its source.",
+          "launch_type": "Deep link is recommended: some launchers (Projectivy on the onn 4K, for one) silently ignore package launches while deep links work.",
+          "launch_target": "For a deep link, the URL the app registers, for example {example_url}. For a package launch, the Android package id, for example {example_app}.",
+          "app_id": "Optional. The app_id (or app_name) the wrapped player reports while this app is in front, so HomeKit highlights the right input when the box switches app on its own. Leave empty to match on the launch target instead."
+        }
+      }
+    }
+  },
+  "options": {
+    "error": {
+      "already_configured": "Another TV Inputs entry already wraps that media player.",
+      "blank_name": "Give the wrapper a name.",
+      "blank_label": "Give the input a label.",
+      "blank_target": "Enter the deep link or package id to launch.",
+      "invalid_launch_type": "Choose how the input is launched.",
+      "duplicate_label": "Another input already uses this label; HomeKit needs each one to be unique."
+    },
+    "step": {
+      "init": {
+        "title": "TV Inputs",
+        "description": "{count} input(s) configured, {overrides} remote key(s) overridden. Pick an input or a key to edit, tick 'Edit basics', or leave everything as is and submit to save. Nothing is written until you save.",
+        "data": {
+          "input": "Inputs",
+          "key": "Remote keys",
+          "forward_remote_keys": "Forward HomeKit remote keys",
+          "edit_basics": "Edit basics"
+        },
+        "data_description": {
+          "input": "Add a new input or open an existing one to change or delete it.",
+          "key": "Open a HomeKit key to send a different Android keycode for it.",
+          "forward_remote_keys": "Send HomeKit's D-pad, back, home and transport keys to the remote entity. Needs a remote in the basics.",
+          "edit_basics": "Change the name, wrapped player, remote or device class."
+        }
+      },
+      "input": {
+        "title": "Input",
+        "description": "One app as HomeKit will list it.",
+        "data": {
+          "label": "Label",
+          "launch_type": "Launch with",
+          "launch_target": "Deep link or package id",
+          "app_id": "App id reported by the player",
+          "delete": "Delete this input"
+        },
+        "data_description": {
+          "label": "What HomeKit shows for this input and what the wrapper reports as its source.",
+          "launch_type": "Deep link is recommended: some launchers (Projectivy on the onn 4K, for one) silently ignore package launches while deep links work.",
+          "launch_target": "For a deep link, the URL the app registers, for example {example_url}. For a package launch, the Android package id, for example {example_app}.",
+          "app_id": "Optional. The app_id (or app_name) the wrapped player reports while this app is in front, so HomeKit highlights the right input when the box switches app on its own. Leave empty to match on the launch target instead.",
+          "delete": "Remove this input from the HomeKit list when you save."
+        }
+      },
+      "key": {
+        "title": "Remote key",
+        "description": "HomeKit key '{key}' currently sends '{current}' (default '{default}'). Enter the Android keycode to send instead, or clear the field to go back to the default.",
+        "data": {
+          "keycode": "Android keycode"
+        },
+        "data_description": {
+          "keycode": "A keycode accepted by remote.send_command on the remote entity, for example DPAD_CENTER, BACK, HOME or MEDIA_PLAY_PAUSE."
+        }
+      },
+      "basics": {
+        "title": "Basics",
+        "description": "Renaming keeps the same entity; only the display name and device name change.",
+        "data": {
+          "name": "Name",
+          "source_entity": "Media player to wrap",
+          "remote_entity": "Remote for navigation keys",
+          "device_class": "Shown in HomeKit as"
+        },
+        "data_description": {
+          "name": "Name of the entity and its device.",
+          "source_entity": "The player that actually launches apps; for an Android TV box this is the Android TV Remote media player.",
+          "remote_entity": "Optional. HomeKit's D-pad, back, home and transport keys are sent here as Android keycodes.",
+          "device_class": "Television or receiver; it only changes the icon and how HomeKit labels the accessory."
+        }
+      }
+    }
+  },
+  "selector": {
+    "device_class": {
+      "options": {
+        "tv": "Television",
+        "receiver": "Receiver"
+      }
+    },
+    "launch_type": {
+      "options": {
+        "url": "Deep link (recommended)",
+        "app": "Package id"
+      }
+    },
+    "input": {
+      "options": {
+        "add": "Add a new input"
+      }
+    }
+  },
+  "exceptions": {
+    "unknown_source": {
+      "message": "'{source}' is not a configured input. Configured inputs: {sources}."
+    }
+  }
+}
