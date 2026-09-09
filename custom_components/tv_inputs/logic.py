@@ -248,13 +248,33 @@ def normalise_behaviour(value: Any, allowed: Sequence[str], default: str) -> str
     return value if isinstance(value, str) and value in allowed else default
 
 
+# What the entity should do with its record of the last back press.
+STAMP_ARM: Final = "arm"
+STAMP_CLEAR: Final = "clear"
+STAMP_KEEP: Final = "keep"
+
+
+def is_repeat_write(since_last: float | None, guard: float) -> bool:
+    """Whether a press is the same physical one arriving twice.
+
+    Measured on a live pairing: a single button press reaches the accessory as
+    two RemoteKey writes 0.11-0.14 s apart (four such pairs in one 70-second
+    session, on back and info alike, always inside 0.15 s while deliberate
+    presses were 0.7 s apart or more). Anything inside ``guard`` is therefore
+    one press, not two - which matters because a duplicate would otherwise
+    close the double-press window or advance the input list twice.
+    """
+    return since_last is not None and since_last < guard
+
+
 def back_press(
     key_map: Mapping[str, str],
     behaviour: str,
     since_last_back: float | None,
     window: float,
-) -> tuple[str, bool]:
-    """What a HomeKit back press sends, and whether it opens a double window.
+    guard: float,
+) -> tuple[str | None, str]:
+    """What a HomeKit back press sends, and what to record about it.
 
     Android's BACK walks an app's own stack and most streaming apps refuse to
     leave on the first press, so the escape to the launcher is HOME - which
@@ -264,20 +284,26 @@ def back_press(
     "get me out": it sends HOME and closes the window, so a third press is a
     plain back again.
 
+    A keycode of ``None`` means send nothing: the write is the duplicate of a
+    press already acted on, and the record is left exactly as it was so the
+    real double-press window still runs from the first write.
+
     The keycodes come from the key map, not from literals, so a user override
     of ``back`` or ``exit`` still decides what is actually sent.
     """
+    if is_repeat_write(since_last_back, guard):
+        return None, STAMP_KEEP
     home = key_map[KEY_EXIT]
     back = key_map[KEY_BACK]
     if behaviour == BACK_SENDS_HOME:
-        return home, False
+        return home, STAMP_ARM
     if (
         behaviour == BACK_DOUBLE_SENDS_HOME
         and since_last_back is not None
         and since_last_back <= window
     ):
-        return home, False
-    return back, behaviour == BACK_DOUBLE_SENDS_HOME
+        return home, STAMP_CLEAR
+    return back, STAMP_ARM
 
 
 def next_label(labels: Sequence[str], current: str | None) -> str | None:

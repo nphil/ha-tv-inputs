@@ -27,12 +27,16 @@ from logic import (  # noqa: E402
     HOMEKIT_KEYS,
     INFO_BEHAVIOURS,
     INFO_SENDS_INFO,
+    STAMP_ARM,
+    STAMP_CLEAR,
+    STAMP_KEEP,
     InputError,
     TvInput,
     back_press,
     current_source,
     duplicate_labels,
     effective_key_map,
+    is_repeat_write,
     keycode_for,
     next_label,
     normalise_behaviour,
@@ -230,32 +234,75 @@ def test_stored_list_keeps_good_records_in_order_and_names_the_bad_ones():
 
 KEY_MAP = dict(DEFAULT_KEY_MAP)
 WINDOW = 1.2
+GUARD = 0.25
 
 
-def test_default_back_always_sends_back_however_fast_it_is_pressed():
-    for elapsed in (None, 0.0, 0.1, WINDOW, 99.0):
-        assert back_press(KEY_MAP, BACK_SENDS_BACK, elapsed, WINDOW) == ("BACK", False)
+def test_default_back_always_sends_back_at_any_deliberate_pace():
+    for elapsed in (None, GUARD, 0.5, WINDOW, 99.0):
+        assert back_press(KEY_MAP, BACK_SENDS_BACK, elapsed, WINDOW, GUARD) == ("BACK", STAMP_ARM)
 
 
 def test_home_mode_never_sends_back():
-    assert back_press(KEY_MAP, BACK_SENDS_HOME, None, WINDOW) == ("HOME", False)
-    assert back_press(KEY_MAP, BACK_SENDS_HOME, 0.1, WINDOW) == ("HOME", False)
+    assert back_press(KEY_MAP, BACK_SENDS_HOME, None, WINDOW, GUARD) == ("HOME", STAMP_ARM)
+    assert back_press(KEY_MAP, BACK_SENDS_HOME, 0.5, WINDOW, GUARD) == ("HOME", STAMP_ARM)
 
 
 def test_double_mode_sends_back_first_then_home_inside_the_window():
-    assert back_press(KEY_MAP, BACK_DOUBLE_SENDS_HOME, None, WINDOW) == ("BACK", True)
-    assert back_press(KEY_MAP, BACK_DOUBLE_SENDS_HOME, WINDOW, WINDOW) == ("HOME", False)
+    assert back_press(KEY_MAP, BACK_DOUBLE_SENDS_HOME, None, WINDOW, GUARD) == ("BACK", STAMP_ARM)
+    assert back_press(KEY_MAP, BACK_DOUBLE_SENDS_HOME, WINDOW, WINDOW, GUARD) == (
+        "HOME",
+        STAMP_CLEAR,
+    )
 
 
 def test_double_mode_treats_a_slow_second_press_as_a_plain_back():
-    keycode, arm = back_press(KEY_MAP, BACK_DOUBLE_SENDS_HOME, WINDOW + 0.01, WINDOW)
-    assert (keycode, arm) == ("BACK", True)
+    assert back_press(KEY_MAP, BACK_DOUBLE_SENDS_HOME, WINDOW + 0.01, WINDOW, GUARD) == (
+        "BACK",
+        STAMP_ARM,
+    )
+
+
+# The pairs measured live: 0.11-0.14 s apart, on back and on info, while every
+# deliberate press in the same session was 0.7 s or more from its neighbour.
+@pytest.mark.parametrize("gap", [0.0, 0.11, 0.14, GUARD - 0.001])
+@pytest.mark.parametrize(
+    "behaviour", [BACK_SENDS_BACK, BACK_DOUBLE_SENDS_HOME, BACK_SENDS_HOME]
+)
+def test_one_press_arriving_as_two_writes_acts_once_and_keeps_the_window(behaviour, gap):
+    keycode, stamp = back_press(KEY_MAP, behaviour, gap, WINDOW, GUARD)
+    assert keycode is None
+    assert stamp == STAMP_KEEP
+    assert is_repeat_write(gap, GUARD)
+
+
+def test_a_real_double_press_still_reaches_home_after_a_duplicate_is_dropped():
+    # First write arms the window; its duplicate is dropped and must not
+    # re-stamp it, so the deliberate second press is still measured from the
+    # first write and lands on home.
+    assert back_press(KEY_MAP, BACK_DOUBLE_SENDS_HOME, None, WINDOW, GUARD)[1] == STAMP_ARM
+    assert back_press(KEY_MAP, BACK_DOUBLE_SENDS_HOME, 0.12, WINDOW, GUARD)[1] == STAMP_KEEP
+    assert back_press(KEY_MAP, BACK_DOUBLE_SENDS_HOME, 0.6, WINDOW, GUARD) == (
+        "HOME",
+        STAMP_CLEAR,
+    )
+
+
+def test_the_guard_never_swallows_a_first_press_or_a_deliberate_one():
+    assert not is_repeat_write(None, GUARD)
+    assert not is_repeat_write(GUARD, GUARD)
+    assert not is_repeat_write(0.7, GUARD)
 
 
 def test_a_key_override_decides_what_back_and_home_actually_send():
     overridden = effective_key_map({"back": "ESCAPE", "exit": "MENU"})
-    assert back_press(overridden, BACK_DOUBLE_SENDS_HOME, None, WINDOW) == ("ESCAPE", True)
-    assert back_press(overridden, BACK_DOUBLE_SENDS_HOME, 0.5, WINDOW) == ("MENU", False)
+    assert back_press(overridden, BACK_DOUBLE_SENDS_HOME, None, WINDOW, GUARD) == (
+        "ESCAPE",
+        STAMP_ARM,
+    )
+    assert back_press(overridden, BACK_DOUBLE_SENDS_HOME, 0.5, WINDOW, GUARD) == (
+        "MENU",
+        STAMP_CLEAR,
+    )
 
 
 def test_cycling_wraps_and_starts_from_the_first_input_when_nothing_matches():

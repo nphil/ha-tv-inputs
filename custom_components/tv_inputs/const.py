@@ -47,6 +47,14 @@ LAUNCH_POLL_SECONDS: Final = 0.5
 # normal pace is never mistaken for it.
 BACK_DOUBLE_SECONDS: Final = 1.2
 
+# A single press on Apple's remote can reach the accessory as two RemoteKey
+# writes ~0.12 s apart (measured live). A repeat of the same key inside this
+# guard is that duplicate, not a second press. Deliberately applied only to
+# back and info, whose second press means something different from the first;
+# arrow keys are left alone because a genuine burst of them is how a swipe in
+# the touch area arrives.
+KEY_REPEAT_GUARD_SECONDS: Final = 0.25
+
 # Presses of the info button are collected for this long before the input is
 # launched, so three quick taps move three inputs along instead of sitting
 # through three launches.

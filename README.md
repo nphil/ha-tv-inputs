@@ -143,6 +143,14 @@ reaches through its `exit` key.
 A third press starts over as a plain back, and both keycodes come from the key
 map, so an override of `back` or `exit` still decides what is sent.
 
+One physical press can reach the accessory as **two** `RemoteKey` writes about
+0.12 s apart (measured on a live pairing, on back and info alike, while every
+deliberate press in the same session was 0.7 s or more from its neighbour). A
+repeat of either key within 0.25 s is therefore treated as the same press and
+dropped, so a single back never jumps to the launcher and a single info press
+never advances two inputs. Arrow keys are deliberately **not** de-duplicated:
+a genuine burst of them is how a swipe in the touch area arrives.
+
 **Info button** — the Control Center remote has **no input picker**; inputs
 only appear in the Home app tile. Set the info button to `Cycle through
 inputs` and each press moves one input along, launching about a second after

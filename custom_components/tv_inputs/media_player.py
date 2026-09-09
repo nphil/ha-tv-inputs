@@ -68,6 +68,7 @@ from .const import (
     DOMAIN,
     EVENT_HOMEKIT_TV_REMOTE_KEY_PRESSED,
     INPUT_CYCLE_DEBOUNCE_SECONDS,
+    KEY_REPEAT_GUARD_SECONDS,
     LAUNCH_ATTEMPTS,
     LAUNCH_CONFIRM_SECONDS,
     LAUNCH_POLL_SECONDS,
@@ -77,9 +78,12 @@ from .logic import (
     INFO_CYCLES_INPUTS,
     KEY_BACK,
     KEY_INFORMATION,
+    STAMP_ARM,
+    STAMP_CLEAR,
     TvInput,
     back_press,
     current_source,
+    is_repeat_write,
     keycode_for,
     next_label,
     resolve_label,
@@ -148,6 +152,7 @@ class TvInputsMediaPlayer(MediaPlayerEntity):
         self._power_on = asyncio.Event()
         # Loop-clock stamp of the last back press that opened a double window.
         self._last_back: float | None = None
+        self._last_info: float | None = None
         # The input the info button is walking towards, held through its launch
         # so further presses advance from it instead of from the live app.
         self._cycle_target: str | None = None
@@ -276,10 +281,24 @@ class TvInputsMediaPlayer(MediaPlayerEntity):
         """Send back, or home when this press closes a double-press window."""
         now = self.hass.loop.time()
         elapsed = None if self._last_back is None else now - self._last_back
-        keycode, arm = back_press(
-            self._config.key_map, self._config.back_behaviour, elapsed, BACK_DOUBLE_SECONDS
+        keycode, stamp = back_press(
+            self._config.key_map,
+            self._config.back_behaviour,
+            elapsed,
+            BACK_DOUBLE_SECONDS,
+            KEY_REPEAT_GUARD_SECONDS,
         )
-        self._last_back = now if arm else None
+        if stamp == STAMP_ARM:
+            self._last_back = now
+        elif stamp == STAMP_CLEAR:
+            self._last_back = None
+        if keycode is None:
+            _LOGGER.debug(
+                "%s: ignoring a back write %.2fs after the last as one press",
+                self.entity_id,
+                elapsed or 0.0,
+            )
+            return
         await self._async_send_remote(keycode)
 
     # -------------------------------------------------------- input cycling
@@ -300,6 +319,16 @@ class TvInputsMediaPlayer(MediaPlayerEntity):
         if target is None:
             _LOGGER.debug("%s: info pressed with no inputs to cycle", self.entity_id)
             return
+        now = self.hass.loop.time()
+        if is_repeat_write(
+            None if self._last_info is None else now - self._last_info,
+            KEY_REPEAT_GUARD_SECONDS,
+        ):
+            _LOGGER.debug(
+                "%s: ignoring a duplicate info write as one press", self.entity_id
+            )
+            return
+        self._last_info = now
         self._cycle_target = target
         if self._cycle_launch is not None and not self._cycle_launch.done():
             self._cycle_launch.cancel()
