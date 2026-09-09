@@ -248,12 +248,6 @@ def normalise_behaviour(value: Any, allowed: Sequence[str], default: str) -> str
     return value if isinstance(value, str) and value in allowed else default
 
 
-# What the entity should do with its record of the last back press.
-STAMP_ARM: Final = "arm"
-STAMP_CLEAR: Final = "clear"
-STAMP_KEEP: Final = "keep"
-
-
 def is_repeat_write(since_last: float | None, guard: float) -> bool:
     """Whether a press is the same physical one arriving twice.
 
@@ -267,14 +261,27 @@ def is_repeat_write(since_last: float | None, guard: float) -> bool:
     return since_last is not None and since_last < guard
 
 
+@dataclass(frozen=True, slots=True)
+class BackDecision:
+    """What to send for a back write, and what to remember about it."""
+
+    keycode: str | None
+    """``None`` means send nothing: this write is a duplicate of one already acted on."""
+    stamp: bool
+    """Record this write's clock; the next write's guard is measured from it."""
+    window_open: bool
+    """Whether a further press soon should be read as "get me out of here"."""
+
+
 def back_press(
     key_map: Mapping[str, str],
     behaviour: str,
-    since_last_back: float | None,
+    since_last_write: float | None,
     window: float,
     guard: float,
-) -> tuple[str | None, str]:
-    """What a HomeKit back press sends, and what to record about it.
+    window_open: bool,
+) -> BackDecision:
+    """Decide one back write.
 
     Android's BACK walks an app's own stack and most streaming apps refuse to
     leave on the first press, so the escape to the launcher is HOME - which
@@ -284,26 +291,30 @@ def back_press(
     "get me out": it sends HOME and closes the window, so a third press is a
     plain back again.
 
-    A keycode of ``None`` means send nothing: the write is the duplicate of a
-    press already acted on, and the record is left exactly as it was so the
-    real double-press window still runs from the first write.
+    The time of the last write and whether the window is open are deliberately
+    *separate*. Collapsing them - clearing the timestamp when the window
+    closes - would leave the HOME press's own duplicate with nothing to
+    compare against: it would pass the guard and fire a stray BACK on the
+    launcher, re-arming the window on the way out. Every write that is acted
+    on is therefore stamped, whatever it sent.
 
     The keycodes come from the key map, not from literals, so a user override
     of ``back`` or ``exit`` still decides what is actually sent.
     """
-    if is_repeat_write(since_last_back, guard):
-        return None, STAMP_KEEP
+    if is_repeat_write(since_last_write, guard):
+        return BackDecision(None, stamp=False, window_open=window_open)
     home = key_map[KEY_EXIT]
     back = key_map[KEY_BACK]
     if behaviour == BACK_SENDS_HOME:
-        return home, STAMP_ARM
+        return BackDecision(home, stamp=True, window_open=False)
     if (
         behaviour == BACK_DOUBLE_SENDS_HOME
-        and since_last_back is not None
-        and since_last_back <= window
+        and window_open
+        and since_last_write is not None
+        and since_last_write <= window
     ):
-        return home, STAMP_CLEAR
-    return back, STAMP_ARM
+        return BackDecision(home, stamp=True, window_open=False)
+    return BackDecision(back, stamp=True, window_open=behaviour == BACK_DOUBLE_SENDS_HOME)
 
 
 def next_label(labels: Sequence[str], current: str | None) -> str | None:

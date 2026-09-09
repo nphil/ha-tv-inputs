@@ -151,6 +151,11 @@ dropped, so a single back never jumps to the launcher and a single info press
 never advances two inputs. Arrow keys are deliberately **not** de-duplicated:
 a genuine burst of them is how a swipe in the touch area arrives.
 
+The time of the last write and whether the double-press window is open are
+tracked separately, on purpose: if closing the window also cleared the
+timestamp, the home press's *own* duplicate would have nothing to compare
+against, pass the guard, and fire a stray back on the launcher.
+
 **Info button** — the Control Center remote has **no input picker**; inputs
 only appear in the Home app tile. Set the info button to `Cycle through
 inputs` and each press moves one input along, launching about a second after

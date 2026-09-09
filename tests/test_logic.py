@@ -27,9 +27,6 @@ from logic import (  # noqa: E402
     HOMEKIT_KEYS,
     INFO_BEHAVIOURS,
     INFO_SENDS_INFO,
-    STAMP_ARM,
-    STAMP_CLEAR,
-    STAMP_KEEP,
     InputError,
     TvInput,
     back_press,
@@ -237,54 +234,78 @@ WINDOW = 1.2
 GUARD = 0.25
 
 
+def _press(behaviour, gaps):
+    """Replay a series of writes through the real state machine.
+
+    ``gaps[0]`` is the first write (nothing before it); each later entry is
+    the seconds since the previous write. The two pieces of state mirror the
+    entity's: the clock of the last write *acted on* - a dropped duplicate
+    deliberately does not move it - and whether the window is open.
+    """
+    sent, now, last, window = [], 0.0, None, False
+    for index, gap in enumerate(gaps):
+        if index:
+            now += gap
+        since = None if last is None else now - last
+        decision = back_press(KEY_MAP, behaviour, since, WINDOW, GUARD, window)
+        sent.append(decision.keycode)
+        if decision.stamp:
+            last = now
+        window = decision.window_open
+    return sent
+
+
 def test_default_back_always_sends_back_at_any_deliberate_pace():
-    for elapsed in (None, GUARD, 0.5, WINDOW, 99.0):
-        assert back_press(KEY_MAP, BACK_SENDS_BACK, elapsed, WINDOW, GUARD) == ("BACK", STAMP_ARM)
+    assert _press(BACK_SENDS_BACK, [None, 0.5, WINDOW, 99.0]) == ["BACK"] * 4
 
 
 def test_home_mode_never_sends_back():
-    assert back_press(KEY_MAP, BACK_SENDS_HOME, None, WINDOW, GUARD) == ("HOME", STAMP_ARM)
-    assert back_press(KEY_MAP, BACK_SENDS_HOME, 0.5, WINDOW, GUARD) == ("HOME", STAMP_ARM)
+    assert _press(BACK_SENDS_HOME, [None, 0.5, 9.0]) == ["HOME"] * 3
 
 
-def test_double_mode_sends_back_first_then_home_inside_the_window():
-    assert back_press(KEY_MAP, BACK_DOUBLE_SENDS_HOME, None, WINDOW, GUARD) == ("BACK", STAMP_ARM)
-    assert back_press(KEY_MAP, BACK_DOUBLE_SENDS_HOME, WINDOW, WINDOW, GUARD) == (
-        "HOME",
-        STAMP_CLEAR,
-    )
+def test_double_mode_sends_back_then_home_then_back_again():
+    # Third deliberate press starts over: the window closed on the home press.
+    assert _press(BACK_DOUBLE_SENDS_HOME, [None, 0.6, 0.6]) == ["BACK", "HOME", "BACK"]
 
 
 def test_double_mode_treats_a_slow_second_press_as_a_plain_back():
-    assert back_press(KEY_MAP, BACK_DOUBLE_SENDS_HOME, WINDOW + 0.01, WINDOW, GUARD) == (
-        "BACK",
-        STAMP_ARM,
-    )
+    assert _press(BACK_DOUBLE_SENDS_HOME, [None, WINDOW + 0.01]) == ["BACK", "BACK"]
 
 
-# The pairs measured live: 0.11-0.14 s apart, on back and on info, while every
-# deliberate press in the same session was 0.7 s or more from its neighbour.
+# One physical press reaches the accessory as two writes 0.11-0.14 s apart
+# (measured live; four pairs in one session, deliberate presses >=0.7 s apart).
 @pytest.mark.parametrize("gap", [0.0, 0.11, 0.14, GUARD - 0.001])
 @pytest.mark.parametrize(
     "behaviour", [BACK_SENDS_BACK, BACK_DOUBLE_SENDS_HOME, BACK_SENDS_HOME]
 )
-def test_one_press_arriving_as_two_writes_acts_once_and_keeps_the_window(behaviour, gap):
-    keycode, stamp = back_press(KEY_MAP, behaviour, gap, WINDOW, GUARD)
-    assert keycode is None
-    assert stamp == STAMP_KEEP
-    assert is_repeat_write(gap, GUARD)
+def test_a_press_arriving_twice_acts_once(behaviour, gap):
+    assert _press(behaviour, [None, gap])[1] is None
 
 
-def test_a_real_double_press_still_reaches_home_after_a_duplicate_is_dropped():
-    # First write arms the window; its duplicate is dropped and must not
-    # re-stamp it, so the deliberate second press is still measured from the
-    # first write and lands on home.
-    assert back_press(KEY_MAP, BACK_DOUBLE_SENDS_HOME, None, WINDOW, GUARD)[1] == STAMP_ARM
-    assert back_press(KEY_MAP, BACK_DOUBLE_SENDS_HOME, 0.12, WINDOW, GUARD)[1] == STAMP_KEEP
-    assert back_press(KEY_MAP, BACK_DOUBLE_SENDS_HOME, 0.6, WINDOW, GUARD) == (
+def test_a_duplicate_does_not_consume_the_double_press_window():
+    # Press, its duplicate, then a deliberate second press: home must still
+    # fire, measured from the first write rather than from the duplicate.
+    assert _press(BACK_DOUBLE_SENDS_HOME, [None, 0.12, 0.5]) == ["BACK", None, "HOME"]
+
+
+def test_the_home_press_own_duplicate_does_not_send_a_stray_back():
+    # The bug this guards: clearing the timestamp when the window closes left
+    # the home press's duplicate with nothing to compare against, so it sent
+    # BACK on the launcher and re-armed the window.
+    assert _press(BACK_DOUBLE_SENDS_HOME, [None, 0.6, 0.12]) == ["BACK", "HOME", None]
+    assert _press(BACK_DOUBLE_SENDS_HOME, [None, 0.6, 0.12, 0.5]) == [
+        "BACK",
         "HOME",
-        STAMP_CLEAR,
-    )
+        None,
+        "BACK",
+    ]
+
+
+def test_a_lone_home_write_cannot_be_reached_without_an_open_window():
+    # Window state, not elapsed time alone, decides: a first press with a
+    # stale-looking gap must never open on home.
+    decision = back_press(KEY_MAP, BACK_DOUBLE_SENDS_HOME, 0.5, WINDOW, GUARD, False)
+    assert decision.keycode == "BACK"
 
 
 def test_the_guard_never_swallows_a_first_press_or_a_deliberate_one():
@@ -295,14 +316,10 @@ def test_the_guard_never_swallows_a_first_press_or_a_deliberate_one():
 
 def test_a_key_override_decides_what_back_and_home_actually_send():
     overridden = effective_key_map({"back": "ESCAPE", "exit": "MENU"})
-    assert back_press(overridden, BACK_DOUBLE_SENDS_HOME, None, WINDOW, GUARD) == (
-        "ESCAPE",
-        STAMP_ARM,
-    )
-    assert back_press(overridden, BACK_DOUBLE_SENDS_HOME, 0.5, WINDOW, GUARD) == (
-        "MENU",
-        STAMP_CLEAR,
-    )
+    first = back_press(overridden, BACK_DOUBLE_SENDS_HOME, None, WINDOW, GUARD, False)
+    assert first.keycode == "ESCAPE"
+    second = back_press(overridden, BACK_DOUBLE_SENDS_HOME, 0.5, WINDOW, GUARD, True)
+    assert second.keycode == "MENU"
 
 
 def test_cycling_wraps_and_starts_from_the_first_input_when_nothing_matches():

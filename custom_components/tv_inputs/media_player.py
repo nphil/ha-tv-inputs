@@ -78,8 +78,6 @@ from .logic import (
     INFO_CYCLES_INPUTS,
     KEY_BACK,
     KEY_INFORMATION,
-    STAMP_ARM,
-    STAMP_CLEAR,
     TvInput,
     back_press,
     current_source,
@@ -151,7 +149,11 @@ class TvInputsMediaPlayer(MediaPlayerEntity):
         self._child: State | None = None
         self._power_on = asyncio.Event()
         # Loop-clock stamp of the last back press that opened a double window.
+        # Clock of the last back write acted on - kept even when the window
+        # closes, so that press's own duplicate still has something to
+        # measure against - and, separately, whether the window is open.
         self._last_back: float | None = None
+        self._back_window_open = False
         self._last_info: float | None = None
         # The input the info button is walking towards, held through its launch
         # so further presses advance from it instead of from the live app.
@@ -281,25 +283,25 @@ class TvInputsMediaPlayer(MediaPlayerEntity):
         """Send back, or home when this press closes a double-press window."""
         now = self.hass.loop.time()
         elapsed = None if self._last_back is None else now - self._last_back
-        keycode, stamp = back_press(
+        decision = back_press(
             self._config.key_map,
             self._config.back_behaviour,
             elapsed,
             BACK_DOUBLE_SECONDS,
             KEY_REPEAT_GUARD_SECONDS,
+            self._back_window_open,
         )
-        if stamp == STAMP_ARM:
+        if decision.stamp:
             self._last_back = now
-        elif stamp == STAMP_CLEAR:
-            self._last_back = None
-        if keycode is None:
+        self._back_window_open = decision.window_open
+        if decision.keycode is None:
             _LOGGER.debug(
                 "%s: ignoring a back write %.2fs after the last as one press",
                 self.entity_id,
                 elapsed or 0.0,
             )
             return
-        await self._async_send_remote(keycode)
+        await self._async_send_remote(decision.keycode)
 
     # -------------------------------------------------------- input cycling
 
