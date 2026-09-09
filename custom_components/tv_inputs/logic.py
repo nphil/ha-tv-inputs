@@ -7,7 +7,7 @@ remote key map and the supported-feature computation all live here.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Final
 
@@ -58,15 +58,19 @@ BASE_FEATURES: Final = (
 # HomeKit key names (homeassistant/components/homekit/const.py) -> Android TV
 # keycodes accepted by remote.send_command on androidtv_remote. Proven live on
 # the onn 4K box behind the master bedroom projector.
+KEY_BACK: Final = "back"
+KEY_EXIT: Final = "exit"
+KEY_INFORMATION: Final = "information"
+
 DEFAULT_KEY_MAP: Final[Mapping[str, str]] = {
     "arrow_up": "DPAD_UP",
     "arrow_down": "DPAD_DOWN",
     "arrow_left": "DPAD_LEFT",
     "arrow_right": "DPAD_RIGHT",
     "select": "DPAD_CENTER",
-    "back": "BACK",
-    "exit": "HOME",
-    "information": "INFO",
+    KEY_BACK: "BACK",
+    KEY_EXIT: "HOME",
+    KEY_INFORMATION: "INFO",
     "rewind": "MEDIA_REWIND",
     "fast_forward": "MEDIA_FAST_FORWARD",
     "next_track": "MEDIA_NEXT",
@@ -74,6 +78,20 @@ DEFAULT_KEY_MAP: Final[Mapping[str, str]] = {
     "play_pause": "MEDIA_PLAY_PAUSE",
 }
 HOMEKIT_KEYS: Final = tuple(DEFAULT_KEY_MAP)
+
+# What the two buttons Apple's remote actually offers should do. The Control
+# Center remote for a HomeKit television has no input picker at all - inputs
+# live in the Home app tile - and its only other spare button is the info one,
+# so cycling the configured inputs from there is the one way to change app
+# from the remote itself.
+BACK_SENDS_BACK: Final = "back"
+BACK_DOUBLE_SENDS_HOME: Final = "double_home"
+BACK_SENDS_HOME: Final = "home"
+BACK_BEHAVIOURS: Final = (BACK_SENDS_BACK, BACK_DOUBLE_SENDS_HOME, BACK_SENDS_HOME)
+
+INFO_SENDS_INFO: Final = "info"
+INFO_CYCLES_INPUTS: Final = "cycle_inputs"
+INFO_BEHAVIOURS: Final = (INFO_SENDS_INFO, INFO_CYCLES_INPUTS)
 
 
 class InputError(ValueError):
@@ -223,6 +241,56 @@ def keycode_for(key_map: Mapping[str, str], key_name: Any) -> str | None:
     if not isinstance(key_name, str):
         return None
     return key_map.get(key_name)
+
+
+def normalise_behaviour(value: Any, allowed: Sequence[str], default: str) -> str:
+    """A stored behaviour, or the default if it is missing or unknown."""
+    return value if isinstance(value, str) and value in allowed else default
+
+
+def back_press(
+    key_map: Mapping[str, str],
+    behaviour: str,
+    since_last_back: float | None,
+    window: float,
+) -> tuple[str, bool]:
+    """What a HomeKit back press sends, and whether it opens a double window.
+
+    Android's BACK walks an app's own stack and most streaming apps refuse to
+    leave on the first press, so the escape to the launcher is HOME - which
+    Apple's remote only reaches through the exit key, a button its Control
+    Center remote for a HomeKit television does not show. ``double_home``
+    keeps in-app back working and treats a second press inside ``window`` as
+    "get me out": it sends HOME and closes the window, so a third press is a
+    plain back again.
+
+    The keycodes come from the key map, not from literals, so a user override
+    of ``back`` or ``exit`` still decides what is actually sent.
+    """
+    home = key_map[KEY_EXIT]
+    back = key_map[KEY_BACK]
+    if behaviour == BACK_SENDS_HOME:
+        return home, False
+    if (
+        behaviour == BACK_DOUBLE_SENDS_HOME
+        and since_last_back is not None
+        and since_last_back <= window
+    ):
+        return home, False
+    return back, behaviour == BACK_DOUBLE_SENDS_HOME
+
+
+def next_label(labels: Sequence[str], current: str | None) -> str | None:
+    """The input after ``current``, wrapping; the first one if it is unknown.
+
+    ``None`` for an empty list: cycling an accessory with no inputs is a
+    no-op, not an error.
+    """
+    if not labels:
+        return None
+    if current in labels:
+        return labels[(labels.index(current) + 1) % len(labels)]
+    return labels[0]
 
 
 def supported_features(child_features: int | None) -> int:

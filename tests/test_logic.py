@@ -17,16 +17,25 @@ sys.path.insert(
 )
 
 from logic import (  # noqa: E402
+    BACK_BEHAVIOURS,
+    BACK_DOUBLE_SENDS_HOME,
+    BACK_SENDS_BACK,
+    BACK_SENDS_HOME,
     BASE_FEATURES,
     DEFAULT_KEY_MAP,
     FEATURE_VOLUME_SET,
     HOMEKIT_KEYS,
+    INFO_BEHAVIOURS,
+    INFO_SENDS_INFO,
     InputError,
     TvInput,
+    back_press,
     current_source,
     duplicate_labels,
     effective_key_map,
     keycode_for,
+    next_label,
+    normalise_behaviour,
     normalise_input,
     normalise_inputs,
     normalise_key_map_overrides,
@@ -215,3 +224,58 @@ def test_stored_list_keeps_good_records_in_order_and_names_the_bad_ones():
     assert inputs == [NETFLIX, PLEX]
     assert rejected == [(1, "blank_label"), (2, "invalid_record"), (4, "blank_target")]
     assert normalise_inputs(None) == ([], [])
+
+
+# ------------------------------------------------- back button and cycling
+
+KEY_MAP = dict(DEFAULT_KEY_MAP)
+WINDOW = 1.2
+
+
+def test_default_back_always_sends_back_however_fast_it_is_pressed():
+    for elapsed in (None, 0.0, 0.1, WINDOW, 99.0):
+        assert back_press(KEY_MAP, BACK_SENDS_BACK, elapsed, WINDOW) == ("BACK", False)
+
+
+def test_home_mode_never_sends_back():
+    assert back_press(KEY_MAP, BACK_SENDS_HOME, None, WINDOW) == ("HOME", False)
+    assert back_press(KEY_MAP, BACK_SENDS_HOME, 0.1, WINDOW) == ("HOME", False)
+
+
+def test_double_mode_sends_back_first_then_home_inside_the_window():
+    assert back_press(KEY_MAP, BACK_DOUBLE_SENDS_HOME, None, WINDOW) == ("BACK", True)
+    assert back_press(KEY_MAP, BACK_DOUBLE_SENDS_HOME, WINDOW, WINDOW) == ("HOME", False)
+
+
+def test_double_mode_treats_a_slow_second_press_as_a_plain_back():
+    keycode, arm = back_press(KEY_MAP, BACK_DOUBLE_SENDS_HOME, WINDOW + 0.01, WINDOW)
+    assert (keycode, arm) == ("BACK", True)
+
+
+def test_a_key_override_decides_what_back_and_home_actually_send():
+    overridden = effective_key_map({"back": "ESCAPE", "exit": "MENU"})
+    assert back_press(overridden, BACK_DOUBLE_SENDS_HOME, None, WINDOW) == ("ESCAPE", True)
+    assert back_press(overridden, BACK_DOUBLE_SENDS_HOME, 0.5, WINDOW) == ("MENU", False)
+
+
+def test_cycling_wraps_and_starts_from_the_first_input_when_nothing_matches():
+    labels = ["Netflix", "Plex", "Apple TV"]
+    assert next_label(labels, None) == "Netflix"
+    assert next_label(labels, "Netflix") == "Plex"
+    assert next_label(labels, "Apple TV") == "Netflix"
+    assert next_label(labels, "Some launcher") == "Netflix"
+    assert next_label([], "Netflix") is None
+    assert next_label(["Plex"], "Plex") == "Plex"
+
+
+@pytest.mark.parametrize("stored", [None, "", "nonsense", 7, {"a": 1}])
+def test_unknown_or_missing_behaviours_fall_back_to_the_android_defaults(stored):
+    assert normalise_behaviour(stored, BACK_BEHAVIOURS, BACK_SENDS_BACK) == BACK_SENDS_BACK
+    assert normalise_behaviour(stored, INFO_BEHAVIOURS, INFO_SENDS_INFO) == INFO_SENDS_INFO
+
+
+def test_stored_behaviours_survive_a_round_trip():
+    for value in BACK_BEHAVIOURS:
+        assert normalise_behaviour(value, BACK_BEHAVIOURS, BACK_SENDS_BACK) == value
+    for value in INFO_BEHAVIOURS:
+        assert normalise_behaviour(value, INFO_BEHAVIOURS, INFO_SENDS_INFO) == value

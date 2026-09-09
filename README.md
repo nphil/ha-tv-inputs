@@ -123,6 +123,35 @@ Defaults, overridable per key in the options:
 Play/pause is sent as a key rather than a service call because the Android TV
 player never reports `playing`, so a service-based toggle always guesses wrong.
 
+## Getting out of an app, and changing app from the remote
+
+Apple's remote decides its own layout; an accessory cannot ask for a different
+one. What it *can* decide is what each button does, and two of them need help
+on Android TV:
+
+**Back button** — Android's `BACK` walks an app's own screens, and most
+streaming apps refuse to leave on the first press, so the button that should
+get you out often does nothing. The escape is `HOME`, which HomeKit only
+reaches through its `exit` key.
+
+| Back button option | First press | Second press within 1.2 s |
+|---|---|---|
+| `Back (Android default)` | `BACK` | `BACK` |
+| `Back, twice for home` | `BACK` | `HOME` — lands on the launcher |
+| `Home (never sends back)` | `HOME` | `HOME` |
+
+A third press starts over as a plain back, and both keycodes come from the key
+map, so an override of `back` or `exit` still decides what is sent.
+
+**Info button** — the Control Center remote has **no input picker**; inputs
+only appear in the Home app tile. Set the info button to `Cycle through
+inputs` and each press moves one input along, launching about a second after
+you stop pressing — so three quick taps move three inputs along and launch
+once, rather than sitting through three launches.
+
+Neither option changes what HomeKit advertises, so the accessory is not
+rebuilt and no re-pairing is needed.
+
 ## Requirements
 
 - Home Assistant **2026.9.0** or newer.

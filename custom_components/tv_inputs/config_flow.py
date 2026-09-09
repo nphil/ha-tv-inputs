@@ -35,8 +35,10 @@ from homeassistant.helpers.selector import (
 )
 
 from .const import (
+    CONF_BACK_BEHAVIOUR,
     CONF_DEVICE_CLASS,
     CONF_FORWARD_REMOTE_KEYS,
+    CONF_INFO_BEHAVIOUR,
     CONF_INPUTS,
     CONF_KEY_MAP_OVERRIDES,
     CONF_REMOTE_ENTITY,
@@ -47,16 +49,21 @@ from .const import (
     DOMAIN,
 )
 from .logic import (
+    BACK_BEHAVIOURS,
+    BACK_SENDS_BACK,
     CONF_APP_ID,
     CONF_LABEL,
     CONF_LAUNCH_TARGET,
     CONF_LAUNCH_TYPE,
     DEFAULT_KEY_MAP,
     HOMEKIT_KEYS,
+    INFO_BEHAVIOURS,
+    INFO_SENDS_INFO,
     LAUNCH_TYPE_URL,
     LAUNCH_TYPES,
     InputError,
     TvInput,
+    normalise_behaviour,
     normalise_input,
     normalise_inputs,
     normalise_key_map_overrides,
@@ -238,6 +245,12 @@ class TvInputsOptionsFlow(OptionsFlow):
         self._overrides = normalise_key_map_overrides(
             entry.options.get(CONF_KEY_MAP_OVERRIDES)
         )
+        self._back_behaviour = normalise_behaviour(
+            entry.options.get(CONF_BACK_BEHAVIOUR), BACK_BEHAVIOURS, BACK_SENDS_BACK
+        )
+        self._info_behaviour = normalise_behaviour(
+            entry.options.get(CONF_INFO_BEHAVIOUR), INFO_BEHAVIOURS, INFO_SENDS_INFO
+        )
         # Index into self._inputs being edited; None means "add a new one".
         self._editing: int | None = None
         self._key: str | None = None
@@ -273,6 +286,24 @@ class TvInputsOptionsFlow(OptionsFlow):
                     SelectSelectorConfig(options=keys, mode=SelectSelectorMode.DROPDOWN)
                 ),
                 vol.Required(
+                    CONF_BACK_BEHAVIOUR, default=self._back_behaviour
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=list(BACK_BEHAVIOURS),
+                        mode=SelectSelectorMode.DROPDOWN,
+                        translation_key=CONF_BACK_BEHAVIOUR,
+                    )
+                ),
+                vol.Required(
+                    CONF_INFO_BEHAVIOUR, default=self._info_behaviour
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=list(INFO_BEHAVIOURS),
+                        mode=SelectSelectorMode.DROPDOWN,
+                        translation_key=CONF_INFO_BEHAVIOUR,
+                    )
+                ),
+                vol.Required(
                     CONF_FORWARD_REMOTE_KEYS, default=self._forward
                 ): BooleanSelector(),
                 vol.Optional(CONF_EDIT_BASICS, default=False): BooleanSelector(),
@@ -284,6 +315,8 @@ class TvInputsOptionsFlow(OptionsFlow):
     ) -> ConfigFlowResult:
         if user_input is not None:
             self._forward = user_input[CONF_FORWARD_REMOTE_KEYS]
+            self._back_behaviour = user_input[CONF_BACK_BEHAVIOUR]
+            self._info_behaviour = user_input[CONF_INFO_BEHAVIOUR]
             if (choice := user_input.get(CONF_INPUT)) is not None:
                 self._editing = None if choice == ADD_INPUT else int(choice)
                 return await self.async_step_input()
@@ -401,6 +434,8 @@ class TvInputsOptionsFlow(OptionsFlow):
         options = {
             CONF_INPUTS: [tv_input.as_dict() for tv_input in self._inputs],
             CONF_FORWARD_REMOTE_KEYS: self._forward,
+            CONF_BACK_BEHAVIOUR: self._back_behaviour,
+            CONF_INFO_BEHAVIOUR: self._info_behaviour,
             CONF_KEY_MAP_OVERRIDES: dict(self._overrides),
         }
         self.hass.config_entries.async_update_entry(

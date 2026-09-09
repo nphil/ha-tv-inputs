@@ -18,8 +18,10 @@ from homeassistant.const import CONF_NAME, Platform
 from homeassistant.core import HomeAssistant
 
 from .const import (
+    CONF_BACK_BEHAVIOUR,
     CONF_DEVICE_CLASS,
     CONF_FORWARD_REMOTE_KEYS,
+    CONF_INFO_BEHAVIOUR,
     CONF_INPUTS,
     CONF_KEY_MAP_OVERRIDES,
     CONF_REMOTE_ENTITY,
@@ -28,7 +30,16 @@ from .const import (
     DEFAULT_FORWARD_REMOTE_KEYS,
     DEVICE_CLASSES,
 )
-from .logic import TvInput, effective_key_map, normalise_inputs
+from .logic import (
+    BACK_BEHAVIOURS,
+    BACK_SENDS_BACK,
+    INFO_BEHAVIOURS,
+    INFO_SENDS_INFO,
+    TvInput,
+    effective_key_map,
+    normalise_behaviour,
+    normalise_inputs,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -45,6 +56,8 @@ class TvInputsConfig:
     device_class: str
     inputs: list[TvInput]
     forward_remote_keys: bool
+    back_behaviour: str = BACK_SENDS_BACK
+    info_behaviour: str = INFO_SENDS_INFO
     key_map: dict[str, str] = field(default_factory=dict)
 
 
@@ -80,6 +93,12 @@ def resolve_config(entry: ConfigEntry) -> TvInputsConfig:
         inputs=inputs,
         forward_remote_keys=bool(
             data.get(CONF_FORWARD_REMOTE_KEYS, DEFAULT_FORWARD_REMOTE_KEYS)
+        ),
+        back_behaviour=normalise_behaviour(
+            data.get(CONF_BACK_BEHAVIOUR), BACK_BEHAVIOURS, BACK_SENDS_BACK
+        ),
+        info_behaviour=normalise_behaviour(
+            data.get(CONF_INFO_BEHAVIOUR), INFO_BEHAVIOURS, INFO_SENDS_INFO
         ),
         key_map=effective_key_map(data.get(CONF_KEY_MAP_OVERRIDES)),
     )

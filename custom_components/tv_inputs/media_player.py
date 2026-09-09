@@ -49,26 +49,40 @@ from homeassistant.const import (
     STATE_UNAVAILABLE,
     STATE_UNKNOWN,
 )
-from homeassistant.core import Event, EventStateChangedData, HomeAssistant, State, callback
+from homeassistant.core import (
+    CALLBACK_TYPE,
+    Event,
+    EventStateChangedData,
+    HomeAssistant,
+    State,
+    callback,
+)
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
-from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.event import async_call_later, async_track_state_change_event
 
 from . import TvInputsConfig, TvInputsConfigEntry
 from .const import (
     ATTR_KEY_NAME,
+    BACK_DOUBLE_SECONDS,
     DOMAIN,
     EVENT_HOMEKIT_TV_REMOTE_KEY_PRESSED,
+    INPUT_CYCLE_DEBOUNCE_SECONDS,
     LAUNCH_ATTEMPTS,
     LAUNCH_CONFIRM_SECONDS,
     LAUNCH_POLL_SECONDS,
     POWER_ON_TIMEOUT_SECONDS,
 )
 from .logic import (
+    INFO_CYCLES_INPUTS,
+    KEY_BACK,
+    KEY_INFORMATION,
     TvInput,
+    back_press,
     current_source,
     keycode_for,
+    next_label,
     resolve_label,
     source_list,
     supported_features,
@@ -133,6 +147,13 @@ class TvInputsMediaPlayer(MediaPlayerEntity):
         self._attr_source_list = source_list(config.inputs)
         self._child: State | None = None
         self._power_on = asyncio.Event()
+        # Loop-clock stamp of the last back press that opened a double window.
+        self._last_back: float | None = None
+        # The input the info button is walking towards, held through its launch
+        # so further presses advance from it instead of from the live app.
+        self._cycle_target: str | None = None
+        self._cycle_unsub: CALLBACK_TYPE | None = None
+        self._cycle_task: asyncio.Task[None] | None = None
 
     # ----------------------------------------------------------------- state
 
@@ -201,6 +222,17 @@ class TvInputsMediaPlayer(MediaPlayerEntity):
                     event_filter=self._async_is_my_key,
                 )
             )
+            self.async_on_remove(self._async_abandon_cycle)
+
+    @callback
+    def _async_abandon_cycle(self) -> None:
+        """Drop a pending or running cycle; a reload rebuilds the entity."""
+        self._cycle_target = None
+        if self._cycle_unsub is not None:
+            self._cycle_unsub()
+            self._cycle_unsub = None
+        if self._cycle_task is not None and not self._cycle_task.done():
+            self._cycle_task.cancel()
 
     @callback
     def _async_apply_child(self, state: State | None) -> None:
@@ -221,11 +253,70 @@ class TvInputsMediaPlayer(MediaPlayerEntity):
 
     async def _async_remote_key_pressed(self, event: Event) -> None:
         key_name = event.data.get(ATTR_KEY_NAME)
+        if key_name == KEY_INFORMATION and self._config.info_behaviour == INFO_CYCLES_INPUTS:
+            self._async_queue_cycle()
+            return
+        if key_name == KEY_BACK:
+            await self._async_back_pressed()
+            return
         keycode = keycode_for(self._config.key_map, key_name)
         if keycode is None:
             _LOGGER.debug("%s: no keycode for HomeKit key %r", self.entity_id, key_name)
             return
         await self._async_send_remote(keycode)
+
+    async def _async_back_pressed(self) -> None:
+        """Send back, or home when this press closes a double-press window."""
+        now = self.hass.loop.time()
+        elapsed = None if self._last_back is None else now - self._last_back
+        keycode, arm = back_press(
+            self._config.key_map, self._config.back_behaviour, elapsed, BACK_DOUBLE_SECONDS
+        )
+        self._last_back = now if arm else None
+        await self._async_send_remote(keycode)
+
+    # -------------------------------------------------------- input cycling
+
+    @callback
+    def _async_queue_cycle(self) -> None:
+        """Advance the target one input and (re)start the debounce timer.
+
+        Presses are counted against the target already queued, not against the
+        app currently in front, so three quick taps land three inputs along
+        even though nothing has launched yet - and a press that arrives while
+        a launch is still being confirmed advances from that launch's target.
+        """
+        target = next_label(self._attr_source_list or [], self._cycle_target or self.source)
+        if target is None:
+            _LOGGER.debug("%s: info pressed with no inputs to cycle", self.entity_id)
+            return
+        self._cycle_target = target
+        if self._cycle_unsub is not None:
+            self._cycle_unsub()
+        self._cycle_unsub = async_call_later(
+            self.hass, INPUT_CYCLE_DEBOUNCE_SECONDS, self._async_cycle_due
+        )
+
+    @callback
+    def _async_cycle_due(self, _now: Any) -> None:
+        self._cycle_unsub = None
+        if self._cycle_task is not None and not self._cycle_task.done():
+            return
+        self._cycle_task = self.hass.async_create_task(
+            self._async_cycle_run(), f"{DOMAIN} cycle input {self.entity_id}", eager_start=False
+        )
+
+    async def _async_cycle_run(self) -> None:
+        """Launch the queued input, then anything queued while it launched."""
+        while (target := self._cycle_target) is not None:
+            try:
+                await self.async_select_source(target)
+            except HomeAssistantError as err:
+                _LOGGER.warning("%s: could not cycle to %s: %s", self.entity_id, target, err)
+                self._cycle_target = None
+                return
+            if self._cycle_target == target:
+                self._cycle_target = None
 
     async def _async_send_remote(self, keycode: str) -> bool:
         """Send one keycode to the remote; False if it could not be delivered."""

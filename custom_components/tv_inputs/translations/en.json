@@ -70,12 +70,16 @@
         "data": {
           "input": "Inputs",
           "key": "Remote keys",
+          "back_behaviour": "Back button",
+          "info_behaviour": "Info button",
           "forward_remote_keys": "Forward HomeKit remote keys",
           "edit_basics": "Edit basics"
         },
         "data_description": {
           "input": "Add a new input or open an existing one to change or delete it.",
           "key": "Open a HomeKit key to send a different Android keycode for it.",
+          "back_behaviour": "Android's back walks an app's own screens and most streaming apps refuse to leave on the first press, so 'Back, twice for home' gives you an escape without losing in-app back: a second press within 1.2 s sends HOME and drops you on the launcher.",
+          "info_behaviour": "Apple's Control Center remote has no input picker - inputs only appear in the Home app tile - so the info button can cycle your configured inputs instead: each press moves one along and the app launches shortly after you stop pressing.",
           "forward_remote_keys": "Send HomeKit's D-pad, back, home and transport keys to the remote entity. Needs a remote in the basics.",
           "edit_basics": "Change the name, wrapped player, remote or device class."
         }
@@ -142,6 +146,19 @@
     "input": {
       "options": {
         "add": "Add a new input"
+      }
+    },
+    "back_behaviour": {
+      "options": {
+        "back": "Back (Android default)",
+        "double_home": "Back, twice for home",
+        "home": "Home (never sends back)"
+      }
+    },
+    "info_behaviour": {
+      "options": {
+        "info": "Info (Android default)",
+        "cycle_inputs": "Cycle through inputs"
       }
     }
   },

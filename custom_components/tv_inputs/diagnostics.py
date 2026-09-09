@@ -52,6 +52,8 @@ async def async_get_config_entry_diagnostics(
             "device_class": config.device_class,
             "inputs": [tv_input.as_dict() for tv_input in config.inputs],
             "forward_remote_keys": config.forward_remote_keys,
+            "back_behaviour": config.back_behaviour,
+            "info_behaviour": config.info_behaviour,
             "key_map": config.key_map,
             "key_map_overridden": sorted(
                 key for key, code in config.key_map.items() if DEFAULT_KEY_MAP[key] != code
