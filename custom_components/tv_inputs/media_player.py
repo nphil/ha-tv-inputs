@@ -50,7 +50,6 @@ from homeassistant.const import (
     STATE_UNKNOWN,
 )
 from homeassistant.core import (
-    CALLBACK_TYPE,
     Event,
     EventStateChangedData,
     HomeAssistant,
@@ -60,7 +59,7 @@ from homeassistant.core import (
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
-from homeassistant.helpers.event import async_call_later, async_track_state_change_event
+from homeassistant.helpers.event import async_track_state_change_event
 
 from . import TvInputsConfig, TvInputsConfigEntry
 from .const import (
@@ -152,8 +151,9 @@ class TvInputsMediaPlayer(MediaPlayerEntity):
         # The input the info button is walking towards, held through its launch
         # so further presses advance from it instead of from the live app.
         self._cycle_target: str | None = None
-        self._cycle_unsub: CALLBACK_TYPE | None = None
-        self._cycle_task: asyncio.Task[None] | None = None
+        self._cycle_wake = asyncio.Event()
+        self._cycle_worker: asyncio.Task[None] | None = None
+        self._cycle_launch: asyncio.Task[None] | None = None
 
     # ----------------------------------------------------------------- state
 
@@ -226,13 +226,20 @@ class TvInputsMediaPlayer(MediaPlayerEntity):
 
     @callback
     def _async_abandon_cycle(self) -> None:
-        """Drop a pending or running cycle; a reload rebuilds the entity."""
+        """Drop a pending or running cycle.
+
+        Saving options reloads the entry, so a debounce or a launch that is
+        still confirming belongs to an entity that is going away: left alone,
+        its poll would keep running and could land a launch after the new
+        entity is already up.
+        """
         self._cycle_target = None
-        if self._cycle_unsub is not None:
-            self._cycle_unsub()
-            self._cycle_unsub = None
-        if self._cycle_task is not None and not self._cycle_task.done():
-            self._cycle_task.cancel()
+        self._cycle_wake.clear()
+        for task in (self._cycle_launch, self._cycle_worker):
+            if task is not None and not task.done():
+                task.cancel()
+        self._cycle_launch = None
+        self._cycle_worker = None
 
     @callback
     def _async_apply_child(self, state: State | None) -> None:
@@ -279,44 +286,67 @@ class TvInputsMediaPlayer(MediaPlayerEntity):
 
     @callback
     def _async_queue_cycle(self) -> None:
-        """Advance the target one input and (re)start the debounce timer.
+        """Advance the target one input; the worker launches where presses stop.
 
-        Presses are counted against the target already queued, not against the
-        app currently in front, so three quick taps land three inputs along
-        even though nothing has launched yet - and a press that arrives while
-        a launch is still being confirmed advances from that launch's target.
+        The next input is taken from the target already queued, never from the
+        app the child reports: a launch takes seconds to confirm, so reading
+        the live app would make every press inside that window pick the same
+        "next" input again. A press arriving while a launch is still being
+        confirmed also cancels it - the user has moved on, and sitting through
+        the remaining ``LAUNCH_ATTEMPTS * LAUNCH_CONFIRM_SECONDS`` first would
+        leave the button feeling dead for up to twelve seconds.
         """
         target = next_label(self._attr_source_list or [], self._cycle_target or self.source)
         if target is None:
             _LOGGER.debug("%s: info pressed with no inputs to cycle", self.entity_id)
             return
         self._cycle_target = target
-        if self._cycle_unsub is not None:
-            self._cycle_unsub()
-        self._cycle_unsub = async_call_later(
-            self.hass, INPUT_CYCLE_DEBOUNCE_SECONDS, self._async_cycle_due
-        )
+        if self._cycle_launch is not None and not self._cycle_launch.done():
+            self._cycle_launch.cancel()
+        self._cycle_wake.set()
+        if self._cycle_worker is None or self._cycle_worker.done():
+            self._cycle_worker = self.hass.async_create_task(
+                self._async_cycle_worker(),
+                f"{DOMAIN} cycle inputs {self.entity_id}",
+                eager_start=False,
+            )
 
-    @callback
-    def _async_cycle_due(self, _now: Any) -> None:
-        self._cycle_unsub = None
-        if self._cycle_task is not None and not self._cycle_task.done():
-            return
-        self._cycle_task = self.hass.async_create_task(
-            self._async_cycle_run(), f"{DOMAIN} cycle input {self.entity_id}", eager_start=False
-        )
-
-    async def _async_cycle_run(self) -> None:
-        """Launch the queued input, then anything queued while it launched."""
-        while (target := self._cycle_target) is not None:
-            try:
-                await self.async_select_source(target)
-            except HomeAssistantError as err:
-                _LOGGER.warning("%s: could not cycle to %s: %s", self.entity_id, target, err)
+    async def _async_cycle_worker(self) -> None:
+        """Settle the presses, launch what they landed on, then repeat."""
+        while self._cycle_wake.is_set():
+            await self._async_settle_presses()
+            target = self._cycle_target
+            if target is None:
+                return
+            self._cycle_launch = self.hass.async_create_task(
+                self.async_select_source(target),
+                f"{DOMAIN} launch {target}",
+                eager_start=False,
+            )
+            await asyncio.wait({self._cycle_launch})
+            launch, self._cycle_launch = self._cycle_launch, None
+            if launch.cancelled():
+                _LOGGER.debug("%s: launch of %s superseded", self.entity_id, target)
+            elif (err := launch.exception()) is not None:
+                if not isinstance(err, HomeAssistantError):
+                    raise err
+                _LOGGER.warning(
+                    "%s: could not cycle to %s: %s", self.entity_id, target, err
+                )
                 self._cycle_target = None
                 return
             if self._cycle_target == target:
                 self._cycle_target = None
+
+    async def _async_settle_presses(self) -> None:
+        """Return once no further press has arrived for the debounce window."""
+        while True:
+            self._cycle_wake.clear()
+            try:
+                async with asyncio.timeout(INPUT_CYCLE_DEBOUNCE_SECONDS):
+                    await self._cycle_wake.wait()
+            except TimeoutError:
+                return
 
     async def _async_send_remote(self, keycode: str) -> bool:
         """Send one keycode to the remote; False if it could not be delivered."""

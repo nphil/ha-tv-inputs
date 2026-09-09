@@ -149,6 +149,12 @@ inputs` and each press moves one input along, launching about a second after
 you stop pressing — so three quick taps move three inputs along and launch
 once, rather than sitting through three launches.
 
+Cycling counts presses against the input it is walking towards, never against
+the app the player currently reports: a launch takes seconds to confirm, so
+reading the live app would make every press inside that window pick the same
+"next" input again. A press arriving while a launch is still being confirmed
+cancels it, so the button never feels dead while a previous launch finishes.
+
 Neither option changes what HomeKit advertises, so the accessory is not
 rebuilt and no re-pairing is needed.
 
