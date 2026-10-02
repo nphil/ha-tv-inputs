@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="TV Inputs">
+  <title>TV Inputs</title>
+  <!-- Same geometry as tools/render_brand.py (light variant). -->
+  <rect width="256" height="256" rx="56" fill="#4338E8"/>
+  <!-- TV: frame, neck and base -->
+  <path fill="#FFFFFF" fill-rule="evenodd" d="M60 40H196A24 24 0 0 1 220 64V160A24 24 0 0 1 196 184H60A24 24 0 0 1 36 160V64A24 24 0 0 1 60 40ZM60 54A10 10 0 0 0 50 64V160A10 10 0 0 0 60 170H196A10 10 0 0 0 206 160V64A10 10 0 0 0 196 54Z"/>
+  <g stroke="#FFFFFF" stroke-linecap="round">
+    <line x1="128" y1="184" x2="128" y2="204" stroke-width="16"/>
+    <line x1="92" y1="208" x2="164" y2="208" stroke-width="14"/>
+  </g>
+  <!-- source switch: one arrow in, one arrow back -->
+  <line x1="82" y1="90" x2="146" y2="90" stroke="#FFFFFF" stroke-width="13" stroke-linecap="round"/>
+  <path d="M142 74L176 90L142 106Z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="4" stroke-linejoin="round"/>
+  <line x1="110" y1="134" x2="174" y2="134" stroke="#FFC93C" stroke-width="13" stroke-linecap="round"/>
+  <path d="M114 118L80 134L114 150Z" fill="#FFC93C" stroke="#FFC93C" stroke-width="4" stroke-linejoin="round"/>
+</svg>
