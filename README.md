@@ -180,10 +180,16 @@ rebuilt and no re-pairing is needed.
 ## Development
 
 Pure logic — input resolution, key mapping, feature-set computation — lives in
-`custom_components/tv_inputs/logic.py` with no Home Assistant imports:
+`custom_components/tv_inputs/logic.py` with no Home Assistant imports and is
+covered by `tests/test_logic.py`. `tests/test_integration.py` runs the config
+flow, options flow and the wrapper entity against a real Home Assistant core.
+The tests use the harness that ships with core (`pytest-homeassistant`,
+versioned like Home Assistant itself), and CI runs them against Home Assistant
+stable and beta every week:
 
 ```bash
-python3 -m pytest tests
+pip install "pytest-homeassistant[bluetooth]"
+python3 -m pytest
 ```
 
 ## Licence
